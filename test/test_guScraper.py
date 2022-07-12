@@ -14,9 +14,15 @@ class TestRequester(unittest.TestCase):
 
     def test_valid_cityNo(self):
         working_list = guScraper.WorkingList().get_working_list()
-        r = guScraper.FGuReqeuster(working_list[0].get_request_key()).get_request_r()
-        # print(f'data : {r.json()}')
+        r = guScraper.FGuReqeuster().get_request_r(working_list[0].get_request_key())
         self.assertEqual('강남구', r.json()['regionList'][0]['cortarName'])
+
+class TestSScraper(unittest.TestCase):
+
+    def test_sscraper(self):
+        guScraper.GuScraper().execute()
+
+
 
 if __name__ == '__main__':
     unittest.main()

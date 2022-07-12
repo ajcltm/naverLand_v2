@@ -1,5 +1,6 @@
 from typing import List, Dict
-from webScrap import work, utils
+from webScrap import work, utils, workedList, workingListFilter, fileSaver,apps
+from scrap import config
 import requests
 
 
@@ -10,14 +11,13 @@ class WorkingList:
         working_list = [work.Work(work=i) for i in working_list_]
         return working_list
 
+
 class FGuReqeuster:
 
-    def __init__(self, work:Dict)->None:
-        self.cityNo = work['cityNo']
-
     @utils.randomSleep
-    def get_request_r(self):
-        url = f'https://new.land.naver.com/api/regions/list?cortarNo={self.cityNo}'
+    def get_request_r(self, work:Dict):
+        cityNo = work['cityNo']
+        url = f'https://new.land.naver.com/api/regions/list?cortarNo={cityNo}'
         headers = {
             'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -38,10 +38,14 @@ class FGuReqeuster:
         return requests.get(url=url, headers=headers)
 
 
-if __name__ == '__main__':
+class GuScraper:
 
-    
-    # mainPath = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '0. gu')
-    # ss = apps.SScraper(FGuReqeuster, working_list, mainPath)
-    # ss.execute()
-    ...
+    def execute(self):
+        wkng_list = WorkingList()
+        folder_path = config.main_path.joinpath('0. gu')
+        wked_list = workedList.WorkedList(folder_path)
+        wkng_list_f = workingListFilter.WorkingListFilter()
+        fr = FGuReqeuster()
+        fs = fileSaver.PickleSaver(folder_path)
+        ss = apps.SScraper(IWorkingList=wkng_list, IWorkedList=wked_list, IWorkingListFilter=wkng_list_f, IRequester=fr, IFileSaver=fs)
+        ss.execute()
