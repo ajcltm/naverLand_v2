@@ -1,18 +1,31 @@
-import sys
-from pathlib import Path
-sys.path.append(str(Path.cwd()))
-from webScrap.webScrap import utils
-
+from typing import List, Dict
+from webScrap import work, utils, apps
+from scrap import config
 import requests
+import pickle
+import os
 
-class FComplexReqeuster:
 
-    def __init__(self, dongCode:str)->None:
-        self.dongCode = dongCode
+class WorkingList:
+
+    def get_working_list(self) -> List[work.IWork]:
+        folder_path = config.main_path.joinpath('1. dong')
+        file_list = os.listdir(folder_path)
+        working_list = []
+        for file in file_list:
+            file_path = folder_path.joinpath(file)
+            with open(file_path, 'rb') as fr:
+                data = pickle.load(fr)
+            working_list += [work.Work(work={'dongNo' : i['cortarNo']}) for i in data['regionList']]
+        return working_list
+
+
+class Reqeuster:
 
     @utils.randomSleep
-    def get_requester(self):
-        url = f'https://new.land.naver.com/api/regions/complexes?cortarNo={self.dongCode}&realEstateType=APT&order='
+    def request(self, work:Dict):
+        dongNo = work['dongNo']
+        url = f'https://new.land.naver.com/api/regions/complexes?cortarNo={dongNo}&realEstateType=APT&order='
         headers = {
             'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -30,33 +43,14 @@ class FComplexReqeuster:
             'Sec-Fetch-Site': 'same-origin',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
         }
-        return requests.get(url, headers=headers)
+        return requests.get(url, headers=headers).json()
 
 
-def get_working_list(file_path):
-    with open(file_path, 'rb') as fr:
-        data = pickle.load(fr)
-    return [i['cortarNo'] for i in data['regionList']]
+class ComplexScraper:
 
-
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-    sys.path.append(str(Path.cwd()))
-    from webScrap.webScrap import apps
-    import pickle
-    import os
-    from tqdm import tqdm
-
-    dong_path = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '1. dong')
-    dong_file_list = os.listdir(dong_path)
-
-    working_list = []
-    for dong_file in tqdm(dong_file_list):
-        file_path = dong_path.joinpath(dong_file)
-        working_list += get_working_list(file_path)
-    print('working list length : ',len(working_list))
-
-    mainPath = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '2. complex')
-    ss = apps.SScraper(FComplexReqeuster, working_list, mainPath)
-    ss.execute()
+    def execute(self):
+        wkng_list = WorkingList()
+        save_path = config.main_path.joinpath('2. complex')
+        fr = Reqeuster()
+        fss = apps.FSScraper(IWorkingList=wkng_list, IRequester=fr, save_path=save_path)
+        fss.execute()

@@ -19,6 +19,7 @@ class WorkingList:
             working_list += [work.Work(work={'guNo' : i['cortarNo']}) for i in data['regionList']]
         return working_list
 
+
 class Reqeuster:
 
     @utils.randomSleep

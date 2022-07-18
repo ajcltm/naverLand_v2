@@ -1,18 +1,31 @@
-# import sys
-# from pathlib import Path
-# sys.path.append(str(Path.cwd()))
-from webScrap.webScrap import utils
-
+from typing import List, Dict
+from webScrap import work, utils, apps
+from scrap import config
 import requests
+import pickle
+import os
 
-class FArticleReqeuster:
 
-    def __init__(self, articleNo:str)->None:
-        self.articleNo = articleNo
+class WorkingList:
+
+    def get_working_list(self) -> List[work.IWork]:
+        folder_path = config.main_path.joinpath('2. complex')
+        file_list = os.listdir(folder_path)
+        working_list = []
+        for file in file_list:
+            file_path = folder_path.joinpath(file)
+            with open(file_path, 'rb') as fr:
+                data = pickle.load(fr)
+            working_list += [work.Work(work={'articleNo' : i['articleNo']}) for i in data['articleList']]
+        return working_list
+
+    
+class Reqeuster:
 
     @utils.randomSleep
-    def get_requester(self):
-        url = f'https://new.land.naver.com/api/articles/{self.articleNo}?complexNo='
+    def get_requester(self, work:Dict):
+        articleNo = work['articleNo']
+        url = f'https://new.land.naver.com/api/articles/{articleNo}?complexNo='
         headers = {
             'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -30,33 +43,14 @@ class FArticleReqeuster:
             'Sec-Fetch-Site': 'same-origin',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
         }
-        return requests.get(url, headers=headers)
+        return requests.get(url, headers=headers).json()
 
 
-def get_working_list(file_path):
-    with open(file_path, 'rb') as fr:
-        data = pickle.load(fr)
-    return [i['articleNo'] for i in data['articleList']]
+class ArticleInfoScraper:
 
-
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-    sys.path.append(str(Path.cwd()))
-    from webScrap.webScrap import apps
-    import pickle
-    import os
-    from tqdm import tqdm
-
-    ariticle_path = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '3. article')
-    article_file_list = os.listdir(ariticle_path)
-
-    # working_list = []
-    # for article_file in tqdm(article_file_list):
-    #     file_path = ariticle_path.joinpath(article_file)
-    #     working_list += get_working_list(file_path)
-    # print('working list length : ',len(working_list))
-    
-    # mainPath = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '4. articleInfo')   
-    # ss = apps.SScraper(FArticleReqeuster, working_list, mainPath)
-    # ss.execute()
+    def execute(self):
+        wkng_list = WorkingList()
+        save_path = config.main_path.joinpath('4. articleInfo')
+        fr = Reqeuster()
+        fss = apps.FSScraper(IWorkingList=wkng_list, IRequester=fr, save_path=save_path)
+        fss.execute()

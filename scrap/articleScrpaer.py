@@ -1,19 +1,32 @@
-import sys
-from pathlib import Path
-sys.path.append(str(Path.cwd()))
-from webScrap.webScrap import utils
-
+from typing import List, Dict
+from webScrap import work, utils, apps
+from scrap import config
 import requests
+import pickle
+import os
 
-class FArticleReqeuster:
 
-    def __init__(self, complexCode:str, tradeType='A1')->None:
-        self.complexCode = complexCode
-        self.tradeType = tradeType
+class WorkingList:
+
+    def get_working_list(self) -> List[work.IWork]:
+        folder_path = config.main_path.joinpath('2. complex')
+        file_list = os.listdir(folder_path)
+        working_list = []
+        for file in file_list:
+            file_path = folder_path.joinpath(file)
+            with open(file_path, 'rb') as fr:
+                data = pickle.load(fr)
+            working_list += [work.Work(work={'complexNo' : i['complexNo']}) for i in data['complexList']]
+        return working_list
+
+
+class Requester:
 
     @utils.randomSleep
-    def get_requester(self):
-        url = f'https://new.land.naver.com/api/articles/complex/{self.complexCode}?realEstateType=APT&tradeType={self.tradeType}&tag=%3A%3A%3A%3A%3A%3A%3A%3A&rentPriceMin=0&rentPriceMax=900000000&priceMin=0&priceMax=900000000&areaMin=0&areaMax=900000000&oldBuildYears&recentlyBuildYears&minHouseHoldCount&maxHouseHoldCount&showArticle=false&sameAddressGroup=false&minMaintenanceCost&maxMaintenanceCost&priceType=RETAIL&directions=&page=1&complexNo={self.complexCode}&buildingNos=&areaNos=&type=list&order=rank'
+    def request(self, work:Dict):   
+        complexNo = work['complexNo']
+        tradeType = 'A1'   #tradeType  A1: 매매, B1: 전세
+        url = f'https://new.land.naver.com/api/articles/complex/{complexNo}?realEstateType=APT&tradeType={tradeType}&tag=%3A%3A%3A%3A%3A%3A%3A%3A&rentPriceMin=0&rentPriceMax=900000000&priceMin=0&priceMax=900000000&areaMin=0&areaMax=900000000&oldBuildYears&recentlyBuildYears&minHouseHoldCount&maxHouseHoldCount&showArticle=false&sameAddressGroup=false&minMaintenanceCost&maxMaintenanceCost&priceType=RETAIL&directions=&page=1&complexNo={complexNo}&buildingNos=&areaNos=&type=list&order=rank'
         headers = {
             'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -31,36 +44,14 @@ class FArticleReqeuster:
             'Sec-Fetch-Site': 'same-origin',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
         }
-        return requests.get(url, headers=headers)
+        return requests.get(url, headers=headers).json()
 
 
-def get_working_list(file_path):
-    with open(file_path, 'rb') as fr:
-        data = pickle.load(fr)
-    return [i['complexNo'] for i in data['complexList']]
+class ArticleScraper:
 
-
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-    sys.path.append(str(Path.cwd()))
-    from webScrap.webScrap import apps
-    import pickle
-    import os
-    from tqdm import tqdm
-
-    complex_path = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '2. complex')
-    complex_file_list = os.listdir(complex_path)
-
-    working_list = []
-    for complex_file in tqdm(complex_file_list):
-        file_path = complex_path.joinpath(complex_file)
-        working_list += get_working_list(file_path)
-    print('working list length : ',len(working_list))
-    
-    mainPath = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '3. article')   
-    ss = apps.SScraper(FArticleReqeuster, working_list, mainPath)
-    ss.execute()
-
-    # r = FArticleReqeuster('137413').get_requester()
-    # print(r.json())
+    def execute(self):
+        wkng_list = WorkingList()
+        save_path = config.main_path.joinpath('3. article')
+        fr = Requester()
+        fss = apps.FSScraper(IWorkingList=wkng_list, IRequester=fr, save_path=save_path)
+        fss.execute()
