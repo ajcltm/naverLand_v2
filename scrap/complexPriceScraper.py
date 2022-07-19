@@ -1,24 +1,47 @@
-from asyncio import as_completed
-from pickle import FALSE
-import sys
-from pathlib import Path
-
-from pkg_resources import working_set
-sys.path.append(str(Path.cwd()))
-from webScrap.webScrap import utils
-
+from typing import List, Dict
+from webScrap import work, utils, apps
+from scrap import config
 import requests
+import pickle
+import os
+from tqdm import tqdm
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
 
-class FComplexPriceReqeuster:
+def process_articleinfo_file(file):
+    try:
+        file_path = config.main_path.joinpath('4. articleInfo', file)
+        with open(file_path, 'rb') as fr:
+            data = pickle.load(fr)
+        return dict(hscpNo=data['articleDetail']['hscpNo'], ptpNo=data['articleDetail']['ptpNo'])
+    except:
+        print(file)
+        return None
 
-    def __init__(self, i)->None:
-        self.complexNo = i['complexNo']
-        self.ptpNo = i['ptpNo']
+class WorkingList:
+
+    def get_working_list(self) -> List[work.IWork]:
+        folder_path = config.main_path.joinpath('4. articleInfo')
+        file_list = os.listdir(folder_path)
+        working_list = []
+        executor = ThreadPoolExecutor()
+        futures  = [executor.submit(process_articleinfo_file, file) for file in tqdm(file_list)]
+        for future in tqdm(as_completed(futures)):
+            r = future.result()
+            if r is not None:
+                working_list.append(r)
+        df = pd.DataFrame(working_list)
+        lst = df[['hscpNo', 'ptpNo']].drop_duplicates().dropna(how="all").to_dict(orient='records')
+        return [work.Work(work=i) for i in lst]
+
+
+class Requester:
 
     @utils.randomSleep
-    def get_requester(self):
+    def request(self, work:Dict):
+        complexNo = work['hscpNo']
+        ptpNo = work['ptpNo']
         url = f'https://new.land.naver.com/api/complexes/{complexNo}/prices?complexNo={complexNo}&year=5&tradeType=A1&areaNo={ptpNo}&type=chart'
         headers = {
             'Accept': '*/*',
@@ -35,63 +58,14 @@ class FComplexPriceReqeuster:
             'Sec-Fetch-Site': 'same-origin',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36'
         }
-        return requests.get(url, headers=headers)
+        return requests.get(url, headers=headers).json()
 
-def get_working_list(file_path):
-    with open(file_path, 'rb') as fr:
-        data = pickle.load(fr)
-    return dict(hscpNo=data['articleDetail']['hscpNo'], ptpNo=data['articleDetail']['ptpNo'])
-    
-def process_articleinfo_file(articleInfo_file):
-    try:
-        file_path = ariticleInfo_path.joinpath(articleInfo_file)
-        return get_working_list(file_path)
-    except:
-        print(articleInfo_file)
-        return None
 
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-    sys.path.append(str(Path.cwd()))
-    from webScrap.webScrap import apps
-    import pandas as pd
-    import pickle
-    import os
-    from tqdm import tqdm
+class ComplexPriceScraper:
 
-    ariticleInfo_path = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '4. articleInfo')
-    articleInfo_file_list = os.listdir(ariticleInfo_path)
-
-    if False:
-        working_list = []
-        for articleInfo_file in tqdm(articleInfo_file_list):
-            file_path = ariticleInfo_path.joinpath(articleInfo_file)
-            try:
-                working_list.append(get_working_list(file_path))  
-            except:
-                print(articleInfo_file)
-    elif False:
-        executor = ThreadPoolExecutor()
-        working_list = []
-        temp_list = executor.map(process_articleinfo_file, articleInfo_file_list)
-        for temp in tqdm(temp_list):
-            working_list.append(temp)
-    else:
-        working_list = []
-        executor = ThreadPoolExecutor()
-        futures  = [executor.submit(process_articleinfo_file, articleInfo_file) for articleInfo_file in tqdm(articleInfo_file_list)]
-        print('futures len : ', len(futures))
-        for future in tqdm(as_completed(futures)):
-            r = future.result()
-            if r is not None:
-                working_list.append(r)
-
-    print('working list length : ',len(working_list))
-    df = pd.DataFrame(working_list)
-    lst = df[['hscpNo', 'ptpNo']].drop_duplicates().dropna(how="all").to_dict(orient='records')
-    print(lst[:10])
-    mainPath = Path.cwd().joinpath('naverLand_v2', 'scrap', 'db', '5. complexPrice')   
-    ss = apps.SScraper(FComplexPriceReqeuster, working_list, mainPath)
-    ss.execute()
-
+    def execute(self):
+        wkng_list = WorkingList()
+        save_path = config.main_path.joinpath('5. complexPrice')
+        fr = Requester()
+        fss = apps.FSScraper(IWorkingList=wkng_list, IRequester=fr, save_path=save_path)
+        fss.execute()

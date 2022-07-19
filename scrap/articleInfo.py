@@ -4,15 +4,16 @@ from scrap import config
 import requests
 import pickle
 import os
+from tqdm import tqdm
 
 
 class WorkingList:
 
     def get_working_list(self) -> List[work.IWork]:
-        folder_path = config.main_path.joinpath('2. complex')
+        folder_path = config.main_path.joinpath('3. article')
         file_list = os.listdir(folder_path)
         working_list = []
-        for file in file_list:
+        for file in tqdm(file_list):
             file_path = folder_path.joinpath(file)
             with open(file_path, 'rb') as fr:
                 data = pickle.load(fr)
@@ -20,10 +21,10 @@ class WorkingList:
         return working_list
 
     
-class Reqeuster:
+class Requester:
 
     @utils.randomSleep
-    def get_requester(self, work:Dict):
+    def request(self, work:Dict):
         articleNo = work['articleNo']
         url = f'https://new.land.naver.com/api/articles/{articleNo}?complexNo='
         headers = {
@@ -51,6 +52,6 @@ class ArticleInfoScraper:
     def execute(self):
         wkng_list = WorkingList()
         save_path = config.main_path.joinpath('4. articleInfo')
-        fr = Reqeuster()
+        fr = Requester()
         fss = apps.FSScraper(IWorkingList=wkng_list, IRequester=fr, save_path=save_path)
         fss.execute()
