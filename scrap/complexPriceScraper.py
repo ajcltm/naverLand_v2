@@ -6,7 +6,7 @@ import pickle
 import os
 from tqdm import tqdm
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor 
 from concurrent.futures import as_completed
 
 def process_articleinfo_file(file):
@@ -25,7 +25,7 @@ class WorkingList:
         folder_path = config.main_path.joinpath('4. articleInfo')
         file_list = os.listdir(folder_path)
         working_list = []
-        executor = ThreadPoolExecutor()
+        executor = ThreadPoolExecutor(max_workers=5)
         futures  = [executor.submit(process_articleinfo_file, file) for file in tqdm(file_list)]
         for future in tqdm(as_completed(futures)):
             r = future.result()
