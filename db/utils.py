@@ -15,8 +15,9 @@ class InsertFormatter:
 
     def get_string_format(self, value:any)->str:
         if type(value) == str:
-            value = value.replace("'", "\'")
-            value = value.replace('"', '\"')
+            value = value.replace("'", '')
+            value = value.replace('"', '')
+            value = value.replace('\\', '')
             return f"'{value}'"
 
         elif type(value)==datetime:
