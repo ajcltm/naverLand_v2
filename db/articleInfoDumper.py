@@ -8,7 +8,7 @@ import os
 import _pickle as pickle
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, ValidationError
 from tqdm import tqdm
 from pathlib import Path
 
@@ -86,14 +86,18 @@ class ArticleInfoModel(BaseModel):
 
     @validator('roomCount', 'bathroomCount', pre=True)
     def roomCount_validator(cls, v):
-        if v == '-':
+        if not v:
+            return None
+        elif v == '-':
             return None
         else:
             return v
     
-    @validator('exposeStartYMD', 'exposeEndYMD', 'articleConfirmYMD', 'aptUseApproveYmd', pre=True, always=True, allow_reuse=True)
+    @validator('exposeStartYMD', 'exposeEndYMD', 'articleConfirmYMD', 'aptUseApproveYmd', pre=True, always=True)
     def deal_with_datetime(cls, v, values):
-        if len(v)==8:
+        if not v:
+            return v
+        elif len(v)==8:
             return datetime.strptime(v, '%Y%m%d')
         elif len(v)==6:
             return datetime.strptime(v, '%Y%m')
@@ -102,6 +106,8 @@ class ArticleInfoModel(BaseModel):
     
     @validator('tagList', pre=True, always=True, allow_reuse=True)
     def transform_tagList(cls, v, values):
+        if not v:
+            return None
         return ', '.join(v)
 
 class ArticleInfoDumper(Idumper.Dumper):
@@ -112,7 +118,7 @@ class ArticleInfoDumper(Idumper.Dumper):
             c, r = divmod(len(list), n)
             return (list[i:i+c] for i in range(0, len(list), c))
         file_list = os.listdir(self.folder_path)
-        self.chunked_file_list = chunk_list(file_list, 20)
+        self.chunked_file_list = chunk_list(file_list, 50)
 
     def get_key_from_fileName(self, fileName):
         return fileName.split('.')[0].split('_')[-1]
@@ -205,8 +211,9 @@ class ArticleInfoDumper(Idumper.Dumper):
                                 exclusiveRate=self.get_value_in_dict(asp, 'exclusiveRate'),
                                 tagList=self.get_value_in_dict(ad, 'tagList')
                         ))
-                except:
-                    print(articleNo)
+                except ValidationError as e:
+                    print(f'validationError {articleNo}')
+                    print(e.json())
         return lst
 
     def insert_value(self):
@@ -225,10 +232,13 @@ class ArticleInfoDumper(Idumper.Dumper):
             self.db.commit()
 
 if __name__ == '__main__':
-    # ArticleInfoDumper(config.main_path.joinpath('4. articleInfo')).insert_value()
-    import pymysql
-    db = pymysql.connect(host='localhost', port=3306, user='root', passwd='2642805', db='naverland', charset='utf8')
-    sql = 'select count(*) from articleInfo'
-    c = db.cursor()
-    c.execute(sql)
-    print(list(c.fetchall()))
+    ArticleInfoDumper(config.main_path.joinpath('4. articleInfo')).insert_value()
+    # import pymysql
+    # db = pymysql.connect(host='localhost', port=3306, user='root', passwd='2642805', db='naverland', charset='utf8')
+    # sql = 'select count(*) from articleInfo'
+    # c = db.cursor()
+    # c.execute(sql)
+    # print(list(c.fetchall()))
+    # file_list = ['articleNo_2221305459.pickle']
+    # ArticleInfoDumper(config.main_path.joinpath('4. articleInfo')).get_subData(file_list)
+    # gen = ArticleInfoDumper(config.main_path.joinpath('4. articleInfo')).get_data(file_list)
