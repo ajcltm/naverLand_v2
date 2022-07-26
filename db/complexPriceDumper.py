@@ -1,21 +1,20 @@
-from db import Idumper
+from db.idumper import IRawDataset, IPickedDataset, IDumper, IInsertPipeline
 from scrap import config
 from db import utils
+from db import idumper
 import os
 import _pickle as pickle
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Iterable, Dict
 from pydantic import BaseModel, validator, ValidationError
 from tqdm import tqdm
-import pandas as pd
+from pathlib import Path
 
-class ComplexPriceModel(BaseModel):
+class ComplexPriceModel_1(BaseModel):
     complexNo : str
     ptpNo : str
-    date : List[datetime]
-    price : List[int]
-    pct_change : Optional[float]
-
+    date : Optional[List[datetime]]
+    price : Optional[List[int]]
 
     @validator('*', pre=True, always=True)
     def deal_with_none(cls, v, values):
@@ -29,78 +28,119 @@ class ComplexPriceModel(BaseModel):
             return None
         return [datetime.strptime(i, '%Y-%m-%d') for i in v]
 
-    @validator('pct_change', always=True)
-    def pct_chagne(cls, v, values):
-        if not values['price']:
+
+class ComplexPriceModel_2(BaseModel):
+    complexNo : str
+    ptpNo : str
+    date : Optional[datetime]
+    price : Optional[int]
+
+    @validator('*', pre=True, always=True)
+    def deal_with_none(cls, v, values):
+        if not v:
             return None
-        elif len(values['price'])==1:
-            return None
-        df = pd.DataFrame({'date':values['date'], 'price':values['price']})
-        # print(df)
-        print(df.groupby('date').last().pct_change())
-        return (values['price'][-1] - values['price'][-2])/values['price'][-1]
+        return v
 
+class RawDatasetForComplexPrice(IRawDataset):
 
-class ComplexPriceDumper(Idumper.Dumper):
-
-    def __init__(self, file_path):
-        super().__init__(file_path)
-        def chunk_list(list, n):
-            c, r = divmod(len(list), n)
-            return (list[i:i+c] for i in range(0, len(list), c))
-        file_list = os.listdir(self.folder_path)
-        self.chunked_file_list = chunk_list(file_list, 20)
+    def __init__(self, folder_path):
+        self.folder_path = folder_path
 
     def get_key_from_fileName(self, fileName):
         hscpNo=fileName.split('.')[0].split('_')[-2]
         ptpNo=fileName.split('.')[0].split('_')[-1]
         return (hscpNo, ptpNo)
 
-    def open_file_get_data(self, file):
+    def open_file_and_get_rawData(self, file):
         file_path = self.folder_path.joinpath(file)
         with open(file_path, mode='rb') as fr:
             data = pickle.load(fr)
         key = self.get_key_from_fileName(file)
         yield {key: data}
 
-    def get_data(self, file_list):
-        return (self.open_file_get_data(file) for file in tqdm(file_list))
+    def get_rawDataset(self, file_list:List[str])->Iterable[Dict]:      # ex : ['file_name1.pickle', 'file_name2.pickle']
+        return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
-    def get_subData(self, file_list):
-        data = self.get_data(file_list)
-        lst = []
-        for complexPrice_dict in data:
-            for complexNoAndPtpNo, complexPriceData in list(complexPrice_dict)[0].items():
+
+class PickedDatasetForComplexPrice(IPickedDataset):
+
+    def get_pickedDataset(self, rawDataset:Iterable[Dict])->Iterable[BaseModel]:
+        model1_dataset = []
+        for rawData in rawDataset:
+            for complexNoAndPtpNo, complexPriceData in list(rawData)[0].items():
                 try:
-                    model = ComplexPriceModel(
-                                complexNo=complexNoAndPtpNo[0],
-                                ptpNo=complexNoAndPtpNo[1],
-                                date=complexPriceData['realPriceDataXList'][1:],
-                                price=complexPriceData['realPriceDataYList'][1:])
-                    lst.append(model
-                        )
-                    # print(model)
+                    model_1 = ComplexPriceModel_1(complexNo=complexNoAndPtpNo[0], ptpNo=complexNoAndPtpNo[1], date=complexPriceData.get('realPriceDataXList')[1:], price=complexPriceData.get('realPriceDataYList')[1:])
+                    model1_dataset.append(model_1)
                 except ValidationError as e:
                     print(f'validationError {complexNoAndPtpNo}')
                     print(e.json())
-        return lst
-
-    def insert_value(self):
         
+        model2_dataset = []
+        for model1_data in model1_dataset:
+            if not model1_data.price:
+                model2 = ComplexPriceModel_2(complexNo=model1_data.complexNo, ptpNo=model1_data.ptpNo, date=None, price=None)
+                model2_dataset.append(model2)
+                continue
+
+            for i in range(0, len(model1_data.price)):
+                try:
+                    model2 = ComplexPriceModel_2(complexNo=model1_data.complexNo, ptpNo=model1_data.ptpNo, date=model1_data.date[i], price=model1_data.price[i])
+                    model2_dataset.append(model2)
+                except ValidationError as e:
+                    print(f'validationError {complexNoAndPtpNo}')
+                    print(e.json())
+        return model2_dataset
+
+
+class DumperForComplexPrice(IDumper):
+
+    def insert_value(self, pickedDataset:List[BaseModel])->None:
+        value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
+        sql = f"insert into complexPrice values {value_parts}"
+        self.db.cursor().execute(sql)
+        self.db.commit()
+
+
+class InsertPipelineForComplexPrice(IInsertPipeline):
+
+    def __init__(self, IRawDataset, IPickedDataset, IDumper, file_list):
+        super().__init__(IRawDataset, IPickedDataset, IDumper)
+        self.file_list = file_list
+
+    def execute(self):
+        rawDataset = self.rawDataset.get_rawDataset(self.file_list)
+        pickedDataset = self.pickedDataset.get_pickedDataset(rawDataset)
+        self.dumper.insert_value(pickedDataset)
+
+
+class ComplexPriceDumper:
+
+    def __init__(self, folder_path, db_name):
+        self.folder_path = folder_path
+        self.db_name = db_name
+        
+        def chunk_list(list, n):
+            c, r = divmod(len(list), n)
+            return (list[i:i+c] for i in range(0, len(list), c))
+            
+        file_list = os.listdir(self.folder_path)
+        self.chunked_file_list = chunk_list(file_list, 20)
+
+    def execute(self):
+        r = RawDatasetForComplexPrice(self.folder_path)
+        p = PickedDatasetForComplexPrice()
+        d = DumperForComplexPrice(self.folder_path, self.db_name)
+
         for file_list in self.chunked_file_list:
-            data_list = self.get_subData(file_list)
-            value_parts = utils.InsertFormatter().get_values_parts(data_list)
-            sql = f"insert into articleInfo values {value_parts}"
-            self.db.cursor().execute(sql)
-            self.db.commit()
+            i = InsertPipelineForComplexPrice(r, p, d, file_list)
+            i.execute()
 
 if __name__ == '__main__':
-    # ComplexPriceDumper(config.main_path.joinpath('5. complexPrice')).insert_value()
-    # import pymysql
-    # db = pymysql.connect(host='localhost', port=3306, user='root', passwd='2642805', db='naverland', charset='utf8')
-    # sql = 'select * from article'
-    # c = db.cursor()
-    # c.execute(sql)
-    # print(len(list(c.fetchall())))
-    file_list = ['hscpNo_ptpNo_23_3.pickle']
-    ComplexPriceDumper(config.main_path.joinpath('5. complexPrice')).get_subData(file_list)
+    folder_path = Path('F:').joinpath('data', 'naverLand', '220714', '5. complexPrice')
+    ComplexPriceDumper(folder_path, 'naverland').execute()
+
+    # file_list = ['hscpNo_ptpNo_3327_2.pickle']
+    # f = folder_path.joinpath(file_list[0])
+    # with open(f, mode='rb') as fr:
+    #     data = pickle.load(fr)
+    # print(data)

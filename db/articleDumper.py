@@ -1,4 +1,4 @@
-from db import Idumper
+from db import idumper
 from scrap import config
 from db import utils
 import os
@@ -13,7 +13,7 @@ class ArticleModel(BaseModel):
     complexNo:str
     
 
-class ArticleDumper(Idumper.Dumper):
+class ArticleDumper(idumper.Dumper):
 
     def get_key_from_fileName(self, fileName):
         return fileName.split('.')[0].split('_')[-1]

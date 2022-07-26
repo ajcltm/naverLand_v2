@@ -1,7 +1,7 @@
 from ast import Return
 from sqlite3 import adapt
 from click import open_file
-from db import Idumper
+from db import idumper
 from scrap import config
 from db import utils
 import os
@@ -110,7 +110,7 @@ class ArticleInfoModel(BaseModel):
             return None
         return ', '.join(v)
 
-class ArticleInfoDumper(Idumper.Dumper):
+class ArticleInfoDumper(idumper.Dumper):
 
     def __init__(self, file_path):
         super().__init__(file_path)

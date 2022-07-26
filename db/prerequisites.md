@@ -30,5 +30,5 @@ CREATE TABLE articleInfo (articleNo VARCHAR(10), articleName VARCHAR(100), hscpN
 ~~~
 
 ~~~sql
-CREATE TABLE complexPrice (complexNo VARCHAR(10), ptpNo VARCHAR(10), date DATE, price INTEGER, pct_change FLOAT);
+CREATE TABLE complexPrice (complexNo VARCHAR(10), ptpNo VARCHAR(10), date DATE, price INT);
 ~~~

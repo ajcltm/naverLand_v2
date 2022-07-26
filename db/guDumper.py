@@ -1,4 +1,4 @@
-from db import Idumper
+from db import idumper
 from scrap import config
 from db import utils
 import os
@@ -12,7 +12,7 @@ class GuModel(BaseModel):
     cityNo:str
 
 
-class GuDumper(Idumper.Dumper):
+class GuDumper(idumper.Dumper):
 
     def get_key_from_fileName(self, fileName):
         return fileName.split('.')[0].split('_')[-1]
