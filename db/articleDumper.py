@@ -1,65 +1,99 @@
-from db import idumper
-from scrap import config
+from db.idumper import IRawDataset, IPickedDataset, IDumper, IInsertPipeline
 from db import utils
 import os
 import _pickle as pickle
-from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, validator
+from typing import Iterable, List, Dict
+from pydantic import BaseModel, ValidationError
+from tqdm import tqdm
 
 class ArticleModel(BaseModel):
     articleNo:str
     articleName:str
     complexNo:str
-    
 
-class ArticleDumper(idumper.Dumper):
+
+class RawDatasetForArticle(IRawDataset):
+
+    def __init__(self, folder_path):
+        self.folder_path = folder_path
 
     def get_key_from_fileName(self, fileName):
         return fileName.split('.')[0].split('_')[-1]
 
-    def get_data(self):
-        file_list = os.listdir(self.folder_path)
-        container = []
-        for file in file_list:
-            file_path = self.folder_path.joinpath(file)
-            with open(file_path, mode='rb') as fr:
-                data = pickle.load(fr)
-            key = self.get_key_from_fileName(file)
-            container.append({key: data})
-        return container
+    def open_file_and_get_rawData(self, file):
+        file_path = self.folder_path.joinpath(file)
+        with open(file_path, mode='rb') as fr:
+            data = pickle.load(fr)
+        key = self.get_key_from_fileName(file)
+        return {key: data}
 
-    def get_subData(self):
-        data = self.get_data()
-        lst = []
-        for complex_dict in data:
-            for complex_no, complex_data in complex_dict.items():
-                for article_data in complex_data['articleList']:
-                    lst.append(ArticleModel(
-                        articleNo=article_data.get('articleNo'), 
-                        articleName=article_data.get('articleName'), 
-                        complexNo=complex_no
-                        ))
-        return lst
+    def get_rawDataset(self, file_list:List[str]):
+        return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
-    def insert_value(self):
-        def chunk_list(list, n):
-            c, r = divmod(len(list), n)
-            return [list[i:i+c] for i in range(0, len(list), c)]
 
-        data_list = self.get_subData()
-        chunked_list = chunk_list(data_list, 4)
-        for chunked_data_list in chunked_list:
-            value_parts = utils.InsertFormatter().get_values_parts(chunked_data_list)
-            sql = f"insert into article values {value_parts}"
-            self.db.cursor().execute(sql)
+class PickedDatasetForArticle(IPickedDataset):
+
+    def __init__(self):
+        self.error_log = []
+
+    def get_pickedDataset(self, rawDataset:Iterable[Dict])->Iterable[BaseModel]:
+        model_dataset=[]
+        for rawData in rawDataset:
+            for complexNo, dataDict in rawData.items():
+                article_dataset = dataDict.get('articleList')
+                if not article_dataset:
+                    self.error_log.append({complexNo:'fail to get the articleList'})                
+                for article_data in article_dataset:        
+                    try:
+                        model = ArticleModel(
+                            articleNo=article_data.get('articleNo'), 
+                            articleName=article_data.get('articleName'), 
+                            complexNo=complexNo
+                        )
+                    except ValidationError as e:
+                        self.error.append(e.json())        
+                    model_dataset.append(model)
+        return model_dataset
+
+class DumperForArticle(IDumper):
+
+    def insert_value(self, pickedDataset:List[BaseModel], commit:bool)->None:
+        value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
+        sql = f"insert into article values {value_parts}"
+        self.db.cursor().execute(sql)
+        if commit:
             self.db.commit()
 
-if __name__ == '__main__':
-    ArticleDumper(config.main_path.joinpath('3. article')).insert_value()
-    # import pymysql
-    # db = pymysql.connect(host='localhost', port=3306, user='root', passwd='2642805', db='naverland', charset='utf8')
-    # sql = 'select * from article'
-    # c = db.cursor()
-    # c.execute(sql)
-    # print(len(list(c.fetchall())))
+
+class InsertPipelineForArticle(IInsertPipeline):
+
+    def __init__(self, IRawDataset, IPickedDataset, IDumper, file_list):
+        super().__init__(IRawDataset, IPickedDataset, IDumper)
+        self.file_list = file_list
+
+    def execute(self, commit):
+        rawDataset = self.rawDataset.get_rawDataset(self.file_list)
+        pickedDataset = self.pickedDataset.get_pickedDataset(rawDataset)
+        self.dumper.insert_value(pickedDataset, commit)
+
+class ArticleDumper:
+
+    def __init__(self, folder_path, db_name):
+        self.folder_path = folder_path
+        self.db_name = db_name
+        
+        def chunk_list(list, n):
+            c, r = divmod(len(list), n)
+            return (list[i:i+c] for i in range(0, len(list), c))
+            
+        file_list = os.listdir(self.folder_path)
+        self.chunked_file_list = chunk_list(file_list, 20)
+
+    def execute(self, commit=True):
+        r = RawDatasetForArticle(self.folder_path)
+        p = PickedDatasetForArticle()
+        d = DumperForArticle(self.folder_path, self.db_name)
+
+        for file_list in self.chunked_file_list:
+            i = InsertPipelineForArticle(r, p, d, file_list)
+            i.execute(commit)

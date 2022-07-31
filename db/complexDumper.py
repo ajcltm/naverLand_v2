@@ -1,11 +1,11 @@
-from db import idumper
-from scrap import config
+from db.idumper import IRawDataset, IPickedDataset, IDumper, IInsertPipeline
 from db import utils
 import os
 import _pickle as pickle
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, validator
+from typing import Iterable, List, Dict, Optional
+from pydantic import BaseModel, validator, ValidationError
+from tqdm import tqdm
 
 class ComplexModel(BaseModel):
     complexNo:str
@@ -31,51 +31,97 @@ class ComplexModel(BaseModel):
         elif len(v)==4:
             return datetime.strptime(v, '%y%m') 
 
-class ComplexDumper(idumper.Dumper):
+
+class RawDatasetForComplex(IRawDataset):
+
+    def __init__(self, folder_path):
+        self.folder_path = folder_path
 
     def get_key_from_fileName(self, fileName):
         return fileName.split('.')[0].split('_')[-1]
 
-    def get_data(self):
-        file_list = os.listdir(self.folder_path)
-        container = []
-        for file in file_list:
-            file_path = self.folder_path.joinpath(file)
-            with open(file_path, mode='rb') as fr:
-                data = pickle.load(fr)
-            key = self.get_key_from_fileName(file)
-            container.append({key: data})
-        return container
+    def open_file_and_get_rawData(self, file):
+        file_path = self.folder_path.joinpath(file)
+        with open(file_path, mode='rb') as fr:
+            data = pickle.load(fr)
+        key = self.get_key_from_fileName(file)
+        return {key: data}
 
-    def get_subData(self):
-        data = self.get_data()
-        lst = []
-        for dong_dict in data:
-            for dong_no, dong_data in dong_dict.items():
-                for complex_data in dong_data['complexList']:
-                    lst.append(ComplexModel(
-                        complexNo=complex_data.get('complexNo'), 
-                        complexName=complex_data.get('complexName'), 
-                        dongNo=dong_no,
-                        realEstateTypeCode=complex_data.get('realEstateTypeCode'),
-                        cortarAddress=complex_data.get('cortarAddress'),
-                        detailAddress=complex_data.get('detailAddress'),
-                        totalHouseholdCount=complex_data.get('totalHouseholdCount'),
-                        totalBuildingCount=complex_data.get('totalBuildingCount'),
-                        highFloor=complex_data.get('highFloor'),
-                        lowFloor=complex_data.get('lowFloor'),
-                        useApproveYmd=complex_data.get('useApproveYmd')
-                        ))
-        return lst
+    def get_rawDataset(self, file_list:List[str]):
+        return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
-    def insert_value(self):
-        data_list = self.get_subData()
-        value_parts = utils.InsertFormatter().get_values_parts(data_list)
+
+class PickedDatasetForComplex(IPickedDataset):
+
+    def __init__(self):
+        self.error_log = []
+
+    def get_pickedDataset(self, rawDataset:Iterable[Dict])->Iterable[BaseModel]:
+        model_dataset=[]
+        for rawData in rawDataset:
+            for dongNo, dataDict in rawData.items():
+                complex_dataset = dataDict.get('complexList')
+                if not complex_dataset:
+                    self.error_log.append({dongNo:'fail to get the complexList'})                
+                for complex_data in complex_dataset:        
+                    try:
+                        model = ComplexModel(
+                            complexNo=complex_data.get('complexNo'), 
+                            complexName=complex_data.get('complexName'), 
+                            dongNo=dongNo,
+                            realEstateTypeCode=complex_data.get('realEstateTypeCode'),
+                            cortarAddress=complex_data.get('cortarAddress'),
+                            detailAddress=complex_data.get('detailAddress'),
+                            totalHouseholdCount=complex_data.get('totalHouseholdCount'),
+                            totalBuildingCount=complex_data.get('totalBuildingCount'),
+                            highFloor=complex_data.get('highFloor'),
+                            lowFloor=complex_data.get('lowFloor'),
+                            useApproveYmd=complex_data.get('useApproveYmd')
+                        )
+                    except ValidationError as e:
+                        self.error.append(e.json())        
+                    model_dataset.append(model)
+        return model_dataset
+
+class DumperForComplex(IDumper):
+
+    def insert_value(self, pickedDataset:List[BaseModel], commit:bool)->None:
+        value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
         sql = f"insert into complex values {value_parts}"
         self.db.cursor().execute(sql)
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
-if __name__ == '__main__':
-    ComplexDumper(config.main_path.joinpath('2. complex')).insert_value()
 
-    
+class InsertPipelineForComplex(IInsertPipeline):
+
+    def __init__(self, IRawDataset, IPickedDataset, IDumper, file_list):
+        super().__init__(IRawDataset, IPickedDataset, IDumper)
+        self.file_list = file_list
+
+    def execute(self, commit):
+        rawDataset = self.rawDataset.get_rawDataset(self.file_list)
+        pickedDataset = self.pickedDataset.get_pickedDataset(rawDataset)
+        self.dumper.insert_value(pickedDataset, commit)
+
+class ComplexDumper:
+
+    def __init__(self, folder_path, db_name):
+        self.folder_path = folder_path
+        self.db_name = db_name
+        
+        def chunk_list(list, n):
+            c, r = divmod(len(list), n)
+            return (list[i:i+c] for i in range(0, len(list), c))
+            
+        file_list = os.listdir(self.folder_path)
+        self.chunked_file_list = chunk_list(file_list, 1)
+
+    def execute(self, commit=True):
+        r = RawDatasetForComplex(self.folder_path)
+        p = PickedDatasetForComplex()
+        d = DumperForComplex(self.folder_path, self.db_name)
+
+        for file_list in self.chunked_file_list:
+            i = InsertPipelineForComplex(r, p, d, file_list)
+            i.execute(commit)

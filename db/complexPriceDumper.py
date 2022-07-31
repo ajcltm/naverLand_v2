@@ -1,7 +1,5 @@
 from db.idumper import IRawDataset, IPickedDataset, IDumper, IInsertPipeline
-from scrap import config
 from db import utils
-from db import idumper
 import os
 import _pickle as pickle
 from datetime import datetime
@@ -94,11 +92,12 @@ class PickedDatasetForComplexPrice(IPickedDataset):
 
 class DumperForComplexPrice(IDumper):
 
-    def insert_value(self, pickedDataset:List[BaseModel])->None:
+    def insert_value(self, pickedDataset:List[BaseModel], commit:bool)->None:
         value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
-        sql = f"insert into complexPrice values {value_parts}"
+        sql = f"insert into complexPrice(complexNo, ptpNo, date, price) values {value_parts}"
         self.db.cursor().execute(sql)
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
 
 class InsertPipelineForComplexPrice(IInsertPipeline):
@@ -107,10 +106,10 @@ class InsertPipelineForComplexPrice(IInsertPipeline):
         super().__init__(IRawDataset, IPickedDataset, IDumper)
         self.file_list = file_list
 
-    def execute(self):
+    def execute(self, commit):
         rawDataset = self.rawDataset.get_rawDataset(self.file_list)
         pickedDataset = self.pickedDataset.get_pickedDataset(rawDataset)
-        self.dumper.insert_value(pickedDataset)
+        self.dumper.insert_value(pickedDataset, commit)
 
 
 class ComplexPriceDumper:
@@ -126,21 +125,11 @@ class ComplexPriceDumper:
         file_list = os.listdir(self.folder_path)
         self.chunked_file_list = chunk_list(file_list, 20)
 
-    def execute(self):
+    def execute(self, commit=True):
         r = RawDatasetForComplexPrice(self.folder_path)
         p = PickedDatasetForComplexPrice()
         d = DumperForComplexPrice(self.folder_path, self.db_name)
 
         for file_list in self.chunked_file_list:
             i = InsertPipelineForComplexPrice(r, p, d, file_list)
-            i.execute()
-
-if __name__ == '__main__':
-    folder_path = Path('F:').joinpath('data', 'naverLand', '220714', '5. complexPrice')
-    ComplexPriceDumper(folder_path, 'naverland').execute()
-
-    # file_list = ['hscpNo_ptpNo_3327_2.pickle']
-    # f = folder_path.joinpath(file_list[0])
-    # with open(f, mode='rb') as fr:
-    #     data = pickle.load(fr)
-    # print(data)
+            i.execute(commit)

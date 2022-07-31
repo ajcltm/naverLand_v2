@@ -18,7 +18,7 @@ CREATE TABLE dong (dongNo VARCHAR(10), dongName VARCHAR(30), guNo VARCHAR(10));
 ~~~
 
 ~~~sql
-CREATE TABLE complex (complexNo VARCHAR(10), name VARCHAR(100), dongNo VARCHAR(10), realEstateTypeCode VARCHAR(10), cortarAddress VARCHAR(100), detailAddress VARCHAR(100), totalHouseholdCount INTEGER, totalBuildingCount INTEGER, highFloor INTEGER, lowFloor INTEGER, useApproveYmd DATE)
+CREATE TABLE complex (complexNo VARCHAR(10), name VARCHAR(100), dongNo VARCHAR(10), realEstateTypeCode VARCHAR(10), cortarAddress VARCHAR(100), detailAddress VARCHAR(100), totalHouseholdCount INTEGER, totalBuildingCount INTEGER, highFloor INTEGER, lowFloor INTEGER, useApproveYmd DATE);
 ~~~
 
 ~~~sql
@@ -30,5 +30,5 @@ CREATE TABLE articleInfo (articleNo VARCHAR(10), articleName VARCHAR(100), hscpN
 ~~~
 
 ~~~sql
-CREATE TABLE complexPrice (complexNo VARCHAR(10), ptpNo VARCHAR(10), date DATE, price INT);
+CREATE TABLE complexPrice (num int(10) NOT NULL AUTO_INCREMENT PRIMARY KEY, complexNo VARCHAR(10), ptpNo VARCHAR(10), date DATE, price INT);
 ~~~

@@ -16,6 +16,7 @@ class WorkSpace:
 
 class CopyAndPaste:
 
+
     def get_subFolderList(self, num):
         project_folder_name = os.listdir(config.parent_path)[num]
         sub_folders_names = ['0. gu', '1. dong', '2. complex']
