@@ -28,6 +28,7 @@ class RawDatasetForDong(IRawDataset):
         return {key: data}
 
     def get_rawDataset(self, file_list:List[str]):
+        print(f'''open files and get raw data''')
         return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
 
@@ -58,6 +59,7 @@ class DumperForDong(IDumper):
     def insert_value(self, pickedDataset:List[BaseModel], commit:bool)->None:
         value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
         sql = f"insert into dong values {value_parts}"
+        print(f'insert dong data : {pickedDataset[0].dongNo, pickedDataset[0].guNo}')
         self.db.cursor().execute(sql)
         if commit:
             self.db.commit()

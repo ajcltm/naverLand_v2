@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, validator
 from datetime import datetime
 
-class returnModel(BaseModel):
+class ReturnModel(BaseModel):
 
     city : str
     guName: str
@@ -47,9 +47,11 @@ class Query:
     def __init__(self, db):
         self.db = db
 
-    def get_return(self, start='2022-01-01', end=None, where=None):
-        if not end:
+    def get_return(self, **kwargs):
+
+        if not kwargs.get('date'):
             end = datetime.now().strftime(format='%Y-%m-%d')
+            where_date = f"where date > '2022-01-01' and date < '{end}'"
         
         grouped = f'''
                 with 
@@ -57,7 +59,7 @@ class Query:
                 (
                 select max(num) as mnum, complexNo, ptpNo, date
                 from complexprice
-                where date > '{start}' and date < '{end}'
+                {where_date}
                 group by complexNo, ptpNo, date
                 )
                 '''
@@ -294,7 +296,7 @@ class Query:
             join article_info
             on city_gu_dong_complex_info.complexNo = article_info.hscpNo and city_gu_dong_complex_info.ptpNo = article_info.ptpNo'''
 
-        if not where:
+        if not [i for i in kwargs.keys() if i != 'date']:
             where = ''
 
         order = f'''
@@ -306,7 +308,7 @@ class Query:
         c = self.db.cursor()
         c.execute(sql)
         field = [column[0] for column in c.description]
-        return (returnModel(**dict(zip(field, row))) for row in c.fetchall())
+        return (ReturnModel(**dict(zip(field, row))) for row in c.fetchall())
 
 
 

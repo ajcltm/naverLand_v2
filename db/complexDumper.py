@@ -48,6 +48,7 @@ class RawDatasetForComplex(IRawDataset):
         return {key: data}
 
     def get_rawDataset(self, file_list:List[str]):
+        print(f'open file and get raw data')
         return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
 
@@ -88,6 +89,7 @@ class DumperForComplex(IDumper):
     def insert_value(self, pickedDataset:List[BaseModel], commit:bool)->None:
         value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
         sql = f"insert into complex values {value_parts}"
+        print(f'insert complex data : {pickedDataset[0].complexNo, pickedDataset[0].dongNo}')
         self.db.cursor().execute(sql)
         if commit:
             self.db.commit()

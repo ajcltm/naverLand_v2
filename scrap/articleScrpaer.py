@@ -25,7 +25,7 @@ class Requester:
     @utils.randomSleep
     def request(self, work:Dict):   
         complexNo = work['complexNo']
-        tradeType = 'A1'   #tradeType  A1: 매매, B1: 전세
+        tradeType = 'B1'   #tradeType  A1: 매매, B1: 전세
         url = f'https://new.land.naver.com/api/articles/complex/{complexNo}?realEstateType=APT&tradeType={tradeType}&tag=%3A%3A%3A%3A%3A%3A%3A%3A&rentPriceMin=0&rentPriceMax=900000000&priceMin=0&priceMax=900000000&areaMin=0&areaMax=900000000&oldBuildYears&recentlyBuildYears&minHouseHoldCount&maxHouseHoldCount&showArticle=false&sameAddressGroup=false&minMaintenanceCost&maxMaintenanceCost&priceType=RETAIL&directions=&page=1&complexNo={complexNo}&buildingNos=&areaNos=&type=list&order=rank'
         headers = {
             'Accept': '*/*',

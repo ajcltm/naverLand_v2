@@ -28,6 +28,7 @@ class RawDatasetForArticle(IRawDataset):
         return {key: data}
 
     def get_rawDataset(self, file_list:List[str]):
+        print(f'open file and get raw data')
         return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
 
@@ -60,6 +61,7 @@ class DumperForArticle(IDumper):
     def insert_value(self, pickedDataset:List[BaseModel], commit:bool)->None:
         value_parts = utils.InsertFormatter().get_values_parts(pickedDataset)
         sql = f"insert into article values {value_parts}"
+        print(f'insert article data : {pickedDataset[0].articleNo, pickedDataset[0].complexNo}')
         self.db.cursor().execute(sql)
         if commit:
             self.db.commit()

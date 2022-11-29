@@ -123,6 +123,7 @@ class RawDatasetForArticleInfo(IRawDataset):
         return {key: data}
 
     def get_rawDataset(self, file_list:List[str]):
+        print(f'open files and get raw data :')
         return (self.open_file_and_get_rawData(file) for file in tqdm(file_list))
 
 
@@ -208,9 +209,9 @@ class PickedDatasetForArticleInfo(IPickedDataset):
                         exclusiveRate=self.get_value_in_dict(asp, 'exclusiveRate'),
                         tagList=self.get_value_in_dict(ad, 'tagList')
                         )
+                    model_dataset.append(model)
                 except ValidationError as e:
-                    self.error.append(e.json())        
-                model_dataset.append(model)
+                    self.error_log.append(e.json())        
         return model_dataset
 
 class DumperForArticleInfo(IDumper):
@@ -232,12 +233,14 @@ class InsertPipelineForArticleInfo(IInsertPipeline):
     def execute(self, commit):
         rawDataset = self.rawDataset.get_rawDataset(self.file_list)
         pickedDataset = self.pickedDataset.get_pickedDataset(rawDataset)
+        print(f'insert data : {pickedDataset[0].articleNo}')
         self.dumper.insert_value(pickedDataset, commit)
+
 
 
 class ArticleInfoDumper:
 
-    def __init__(self, folder_path, db_name):
+    def __init__(self, folder_path, db_name, start_file_name=None):
         self.folder_path = folder_path
         self.db_name = db_name
         
@@ -246,6 +249,10 @@ class ArticleInfoDumper:
             return (list[i:i+c] for i in range(0, len(list), c))
             
         file_list = os.listdir(self.folder_path)
+        if start_file_name:
+            print(f'articleInfo dumper starts with the file name : {start_file_name}')
+            idx = file_list.index(start_file_name)
+            file_list = file_list[idx:]
         self.chunked_file_list = chunk_list(file_list, 50)
 
     def execute(self, commit=True):
